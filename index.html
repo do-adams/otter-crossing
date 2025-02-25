@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Otter Crossing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(to bottom, #87CEEB, #98FB98);
+      margin: 0;
+      padding: 0;
+    }
+    #gameContainer {
+      position: relative;
+      width: 800px;
+      margin: 20px auto;
+    }
+    #gameSVG {
+      border: none;
+    }
+    .screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 800px;
+      height: 600px;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 24px;
+    }
+    .screen h1 {
+      margin: 0;
+      font-size: 48px;
+      font-family: 'Chewy', cursive;
+      color: #2E8B57;
+      text-shadow: 2px 2px 4px #fff;
+    }
+    .screen button {
+      padding: 10px 20px;
+      font-size: 20px;
+      margin-top: 20px;
+      cursor: pointer;
+    }
+    #controls {
+      display: flex;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    #controls button {
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      margin: 0 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <svg id="gameSVG" width="800" height="600"></svg>
+    <div id="startScreen" class="screen">
+      <h1>Otter Crossing</h1>
+      <button id="playBtn">Play</button>
+    </div>
+    <div id="levelCompleteScreen" class="screen" style="display: none;">
+      <h1>Level Complete</h1>
+    </div>
+    <div id="gameOverScreen" class="screen" style="display: none;">
+      <h1>Game Over</h1>
+      <button id="restartBtn">Restart Game</button>
+    </div>
+    <div id="gameWinScreen" class="screen" style="display: none;">
+      <h1>You Win!</h1>
+      <button id="restartGameBtn">Restart Game</button>
+    </div>
+    <div id="controls">
+      <button id="leftBtn">←</button>
+      <button id="upBtn">↑</button>
+      <button id="downBtn">↓</button>
+      <button id="rightBtn">→</button>
+    </div>
+  </div>
+
+  <script>
+    // **Constants**
+    const CELL_SIZE = 50;
+    const COLS = 16;
+    const ROWS = 12;
+
+    // **Game State**
+    let currentLevel = 0;
+    let lives = 3;
+    let gameState = 'start';
+    let otterRow = 11;
+    let otterCol = 7;
+    let obstacles = [];
+    let lastTime = 0;
+
+    // **DOM Elements**
+    const gameSVG = document.getElementById('gameSVG');
+    const startScreen = document.getElementById('startScreen');
+    const levelCompleteScreen = document.getElementById('levelCompleteScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const gameWinScreen = document.getElementById('gameWinScreen');
+    const playBtn = document.getElementById('playBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const restartGameBtn = document.getElementById('restartGameBtn');
+    const upBtn = document.getElementById('upBtn');
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+    const downBtn = document.getElementById('downBtn');
+
+    // **Initialize Environment**
+    const bankTop = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bankTop.setAttribute("x", "0");
+    bankTop.setAttribute("y", "0");
+    bankTop.setAttribute("width", "800");
+    bankTop.setAttribute("height", "50");
+    bankTop.setAttribute("fill", "#90EE90");
+    gameSVG.appendChild(bankTop);
+
+    const river = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    river.setAttribute("x", "0");
+    river.setAttribute("y", "50");
+    river.setAttribute("width", "800");
+    river.setAttribute("height", "500");
+    river.setAttribute("fill", "#ADD8E6");
+    gameSVG.appendChild(river);
+
+    const bankBottom = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bankBottom.setAttribute("x", "0");
+    bankBottom.setAttribute("y", "550");
+    bankBottom.setAttribute("width", "800");
+    bankBottom.setAttribute("height", "50");
+    bankBottom.setAttribute("fill", "#90EE90");
+    gameSVG.appendChild(bankBottom);
+
+    const maleOtter = createOtter(false);
+    maleOtter.setAttribute("transform", `translate(${50 * 7 + 25}, 25)`);
+    gameSVG.appendChild(maleOtter);
+
+    const femaleOtter = createOtter(true);
+    femaleOtter.setAttribute("transform", `translate(${50 * 7 + 25}, ${50 * 11 + 25})`);
+    gameSVG.appendChild(femaleOtter);
+
+    const heartsGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    heartsGroup.setAttribute("transform", "translate(10, 10)");
+    for (let i = 0; i < 3; i++) {
+      const heart = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      heart.setAttribute("d", "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z");
+      heart.setAttribute("fill", "red");
+      heart.setAttribute("transform", `translate(${i * 20}, 0) scale(0.5)`);
+      heartsGroup.appendChild(heart);
+    }
+    gameSVG.appendChild(heartsGroup);
+
+    const flowerXs = [50, 150, 250, 550, 650, 750];
+    flowerXs.forEach(x => {
+      gameSVG.appendChild(createFlower(x, 25, "#FFB6C1"));
+      gameSVG.appendChild(createFlower(x, 575, "#FFB6C1"));
+    });
+
+    const levelGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    levelGroup.setAttribute("transform", "translate(600, 30)");
+    const levelText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    levelText.setAttribute("x", "0");
+    levelText.setAttribute("y", "0");
+    levelText.setAttribute("text-anchor", "middle");
+    levelText.setAttribute("font-size", "20");
+    levelText.setAttribute("fill", "white");
+    levelText.setAttribute("font-family", "'Chewy', cursive");
+    levelText.textContent = "Level 1";
+    levelGroup.appendChild(levelText);
+    gameSVG.appendChild(levelGroup);
+
+    for (let i = 0; i < 10; i++) {
+      const x = Math.random() * 800;
+      const y = 50 + Math.random() * 500;
+      gameSVG.appendChild(createSparkle(x, y));
+    }
+
+    // **Utility Functions**
+    function shuffle(array) {
+      const a = array.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function generateLevel(n) {
+      const rowsWithObstacles = Math.min(3 + Math.floor((n - 1) / 2), 10);
+      const obstacleCountPerRow = 2 + Math.floor((n - 1) / 3);
+      const speed = 50 + 10 * (n - 1);
+      const riverRows = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      const selectedRows = shuffle(riverRows).slice(0, rowsWithObstacles);
+      const obstacles = [];
+      const types = ['fish', 'log', 'lilyPad'];
+      
+      selectedRows.forEach(row => {
+        const type = types[Math.floor(Math.random() * types.length)];
+        for (let i = 0; i < obstacleCountPerRow; i++) {
+          const x = Math.random() * 800; // Random position between 0 and 800
+          obstacles.push({ row, type, speed, x });
+        }
+      });
+      
+      return obstacles;
+    }
+
+    // **Game Element Creation Functions**
+    function createOtter(isFemale) {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const body = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+      body.setAttribute("cx", "0");
+      body.setAttribute("cy", "0");
+      body.setAttribute("rx", "20");
+      body.setAttribute("ry", "10");
+      body.setAttribute("fill", isFemale ? "brown" : "#8B4513");
+      g.appendChild(body);
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      head.setAttribute("cx", "15");
+      head.setAttribute("cy", "-5");
+      head.setAttribute("r", "8");
+      head.setAttribute("fill", isFemale ? "brown" : "#8B4513");
+      g.appendChild(head);
+      const leftEye = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      leftEye.setAttribute("cx", "10");
+      leftEye.setAttribute("cy", "-7");
+      leftEye.setAttribute("r", "2");
+      leftEye.setAttribute("fill", "white");
+      g.appendChild(leftEye);
+      const leftPupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      leftPupil.setAttribute("cx", "11");
+      leftPupil.setAttribute("cy", "-6");
+      leftPupil.setAttribute("r", "1");
+      leftPupil.setAttribute("fill", "black");
+      g.appendChild(leftPupil);
+      const rightEye = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      rightEye.setAttribute("cx", "20");
+      rightEye.setAttribute("cy", "-7");
+      rightEye.setAttribute("r", "2");
+      rightEye.setAttribute("fill", "white");
+      g.appendChild(rightEye);
+      const rightPupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      rightPupil.setAttribute("cx", "21");
+      rightPupil.setAttribute("cy", "-6");
+      rightPupil.setAttribute("r", "1");
+      rightPupil.setAttribute("fill", "black");
+      g.appendChild(rightPupil);
+      const nose = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      nose.setAttribute("cx", "15");
+      nose.setAttribute("cy", "-2");
+      nose.setAttribute("r", "1");
+      nose.setAttribute("fill", "black");
+      g.appendChild(nose);
+      const mouth = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      mouth.setAttribute("d", "M12 -1 Q15 1 18 -1");
+      mouth.setAttribute("stroke", "black");
+      mouth.setAttribute("fill", "none");
+      g.appendChild(mouth);
+      const leftBlush = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      leftBlush.setAttribute("cx", "8");
+      leftBlush.setAttribute("cy", "-3");
+      leftBlush.setAttribute("r", "2");
+      leftBlush.setAttribute("fill", "pink");
+      leftBlush.setAttribute("opacity", "0.5");
+      g.appendChild(leftBlush);
+      const rightBlush = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      rightBlush.setAttribute("cx", "22");
+      rightBlush.setAttribute("cy", "-3");
+      rightBlush.setAttribute("r", "2");
+      rightBlush.setAttribute("fill", "pink");
+      rightBlush.setAttribute("opacity", "0.5");
+      g.appendChild(rightBlush);
+      if (isFemale) {
+        const flower = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        flower.setAttribute("transform", "translate(20, -10)");
+        for (let i = 0; i < 5; i++) {
+          const petal = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+          petal.setAttribute("cx", "0");
+          petal.setAttribute("cy", "0");
+          petal.setAttribute("rx", "3");
+          petal.setAttribute("ry", "6");
+          petal.setAttribute("fill", "#FFB6C1");
+          petal.setAttribute("transform", `rotate(${i * 72}) translate(0, -8)`);
+          flower.appendChild(petal);
+        }
+        const center = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        center.setAttribute("cx", "0");
+        center.setAttribute("cy", "0");
+        center.setAttribute("r", "3");
+        center.setAttribute("fill", "yellow");
+        flower.appendChild(center);
+        const animate = document.createElementNS("http://www.w3.org/2000/svg", "animateTransform");
+        animate.setAttribute("attributeName", "transform");
+        animate.setAttribute("type", "rotate");
+        animate.setAttribute("from", "-5 0 0");
+        animate.setAttribute("to", "5 0 0");
+        animate.setAttribute("dur", "2s");
+        animate.setAttribute("repeatCount", "indefinite");
+        animate.setAttribute("additive", "sum");
+        flower.appendChild(animate);
+        g.appendChild(flower);
+      } else {
+        const bowTie = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        bowTie.setAttribute("transform", "translate(15, 5)");
+        const leftBow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        leftBow.setAttribute("points", "-5,0 -10,5 -10,-5");
+        leftBow.setAttribute("fill", "red");
+        bowTie.appendChild(leftBow);
+        const rightBow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        rightBow.setAttribute("points", "5,0 10,5 10,-5");
+        rightBow.setAttribute("fill", "red");
+        bowTie.appendChild(rightBow);
+        const knot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        knot.setAttribute("cx", "0");
+        knot.setAttribute("cy", "0");
+        knot.setAttribute("r", "2");
+        knot.setAttribute("fill", "red");
+        bowTie.appendChild(knot);
+        g.appendChild(bowTie);
+      }
+      return g;
+    }
+
+    function createFish() {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const body = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+      body.setAttribute("cx", "0");
+      body.setAttribute("cy", "0");
+      body.setAttribute("rx", "15");
+      body.setAttribute("ry", "5");
+      body.setAttribute("fill", "#87CEFA");
+      g.appendChild(body);
+      const tail = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      tail.setAttribute("points", "-15,0 -25,5 -25,-5");
+      tail.setAttribute("fill", "#87CEFA");
+      g.appendChild(tail);
+      const leftEye = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      leftEye.setAttribute("cx", "10");
+      leftEye.setAttribute("cy", "-2");
+      leftEye.setAttribute("r", "1.5");
+      leftEye.setAttribute("fill", "white");
+      g.appendChild(leftEye);
+      const leftPupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      leftPupil.setAttribute("cx", "10.5");
+      leftPupil.setAttribute("cy", "-1.5");
+      leftPupil.setAttribute("r", "0.75");
+      leftPupil.setAttribute("fill", "black");
+      g.appendChild(leftPupil);
+      const rightEye = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      rightEye.setAttribute("cx", "10");
+      rightEye.setAttribute("cy", "2");
+      rightEye.setAttribute("r", "1.5");
+      rightEye.setAttribute("fill", "white");
+      g.appendChild(rightEye);
+      const rightPupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      rightPupil.setAttribute("cx", "10.5");
+      rightPupil.setAttribute("cy", "2.5");
+      rightPupil.setAttribute("r", "0.75");
+      rightPupil.setAttribute("fill", "black");
+      g.appendChild(rightPupil);
+      const mouth = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      mouth.setAttribute("d", "M8 0 Q10 1 12 0");
+      mouth.setAttribute("stroke", "black");
+      mouth.setAttribute("fill", "none");
+      g.appendChild(mouth);
+      return g;
+    }
+
+    function createLog() {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", "-25");
+      rect.setAttribute("y", "-5");
+      rect.setAttribute("width", "50");
+      rect.setAttribute("height", "10");
+      rect.setAttribute("fill", "#D2B48C");
+      g.appendChild(rect);
+      const heart1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      heart1.setAttribute("d", "M-15,0 Q-17,-2 -19,0 Q-17,2 -15,0 Q-13,2 -15,0");
+      heart1.setAttribute("fill", "red");
+      heart1.setAttribute("transform", "scale(0.5)");
+      g.appendChild(heart1);
+      const heart2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      heart2.setAttribute("d", "M15,0 Q13,-2 11,0 Q13,2 15,0 Q17,2 15,0");
+      heart2.setAttribute("fill", "red");
+      heart2.setAttribute("transform", "scale(0.5)");
+      g.appendChild(heart2);
+      return g;
+    }
+
+    function createLilyPad() {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", "0");
+      circle.setAttribute("cy", "0");
+      circle.setAttribute("r", "15");
+      circle.setAttribute("fill", "#98FB98");
+      g.appendChild(circle);
+      const flower = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      flower.setAttribute("transform", "scale(0.5)");
+      for (let i = 0; i < 5; i++) {
+        const petal = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+        petal.setAttribute("cx", "0");
+        petal.setAttribute("cy", "0");
+        petal.setAttribute("rx", "3");
+        petal.setAttribute("ry", "6");
+        petal.setAttribute("fill", "white");
+        petal.setAttribute("transform", `rotate(${i * 72}) translate(0, -8)`);
+        flower.appendChild(petal);
+      }
+      const center = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      center.setAttribute("cx", "0");
+      center.setAttribute("cy", "0");
+      center.setAttribute("r", "3");
+      center.setAttribute("fill", "yellow");
+      flower.appendChild(center);
+      g.appendChild(flower);
+      return g;
+    }
+
+    function createFlower(x, y, color) {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("transform", `translate(${x}, ${y}) scale(0.5)`);
+      for (let i = 0; i < 5; i++) {
+        const petal = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+        petal.setAttribute("cx", "0");
+        petal.setAttribute("cy", "0");
+        petal.setAttribute("rx", "5");
+        petal.setAttribute("ry", "10");
+        petal.setAttribute("fill", color);
+        petal.setAttribute("transform", `rotate(${i * 72}) translate(0, -15)`);
+        g.appendChild(petal);
+      }
+      const center = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      center.setAttribute("cx", "0");
+      center.setAttribute("cy", "0");
+      center.setAttribute("r", "5");
+      center.setAttribute("fill", "yellow");
+      g.appendChild(center);
+      return g;
+    }
+
+    function createSparkle(x, y) {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", x);
+      circle.setAttribute("cy", y);
+      circle.setAttribute("r", "2");
+      circle.setAttribute("fill", "white");
+      const animate = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+      animate.setAttribute("attributeName", "opacity");
+      animate.setAttribute("values", "0;1;0");
+      animate.setAttribute("dur", "2s");
+      animate.setAttribute("repeatCount", "indefinite");
+      circle.appendChild(animate);
+      return circle;
+    }
+
+    function createParticle(x, y) {
+      const heart = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      heart.setAttribute("d", "M0 0 Q-2 -2 -4 0 Q-2 2 0 0 Q2 2 0 0");
+      heart.setAttribute("fill", "red");
+      heart.setAttribute("transform", `translate(${x}, ${y}) scale(2)`);
+      const animateX = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+      animateX.setAttribute("attributeName", "x");
+      animateX.setAttribute("from", x);
+      animateX.setAttribute("to", x + (Math.random() - 0.5) * 100);
+      animateX.setAttribute("dur", "2s");
+      animateX.setAttribute("fill", "freeze");
+      heart.appendChild(animateX);
+      const animateY = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+      animateY.setAttribute("attributeName", "y");
+      animateY.setAttribute("from", y);
+      animateY.setAttribute("to", y - 100);
+      animateY.setAttribute("dur", "2s");
+      animateY.setAttribute("fill", "freeze");
+      heart.appendChild(animateY);
+      const animateOpacity = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+      animateOpacity.setAttribute("attributeName", "opacity");
+      animateOpacity.setAttribute("from", "1");
+      animateOpacity.setAttribute("to", "0");
+      animateOpacity.setAttribute("dur", "2s");
+      animateOpacity.setAttribute("fill", "freeze");
+      heart.appendChild(animateOpacity);
+      gameSVG.appendChild(heart);
+      setTimeout(() => gameSVG.removeChild(heart), 2000);
+    }
+
+    // **Game Logic**
+    function setGameState(newState) {
+      gameState = newState;
+      startScreen.style.display = newState === 'start' ? 'flex' : 'none';
+      levelCompleteScreen.style.display = newState === 'levelComplete' ? 'flex' : 'none';
+      gameOverScreen.style.display = newState === 'gameOver' ? 'flex' : 'none';
+      gameWinScreen.style.display = newState === 'gameWin' ? 'flex' : 'none';
+      if (newState === 'playing') {
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    function startLevel() {
+      lives = 3;
+      otterRow = 11;
+      otterCol = 7;
+      updateOtterPosition();
+      obstacles.forEach(ob => gameSVG.removeChild(ob.element));
+      obstacles = [];
+      const levelObstacles = generateLevel(currentLevel + 1);
+      levelObstacles.forEach(obs => {
+        const element = obs.type === 'fish' ? createFish() : obs.type === 'log' ? createLog() : createLilyPad();
+        element.setAttribute("transform", `translate(${obs.x}, ${50 * obs.row + 25})`);
+        gameSVG.appendChild(element);
+        obstacles.push({ ...obs, element });
+      });
+      levelText.textContent = `Level ${currentLevel + 1}`;
+      while (heartsGroup.children.length < 3) {
+        const heart = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        heart.setAttribute("d", "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z");
+        heart.setAttribute("fill", "red");
+        heart.setAttribute("transform", `translate(${heartsGroup.children.length * 20}, 0) scale(0.5)`);
+        heartsGroup.appendChild(heart);
+      }
+      setGameState('playing');
+    }
+
+    function gameLoop(time) {
+      if (gameState !== 'playing') return;
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      obstacles.forEach(ob => {
+        ob.x -= (ob.speed * deltaTime) / 1000;
+        if (ob.x < -50) ob.x = 800;
+        ob.element.setAttribute("transform", `translate(${ob.x}, ${50 * ob.row + 25})`);
+      });
+      const otterBBox = femaleOtter.getBBox();
+      const otterX = 50 * otterCol + 25 + otterBBox.x;
+      const otterY = 50 * otterRow + 25 + otterBBox.y;
+      const otterWidth = otterBBox.width;
+      const otterHeight = otterBBox.height;
+      for (const ob of obstacles) {
+        const obBBox = ob.element.getBBox();
+        const obX = ob.x + obBBox.x;
+        const obY = 50 * ob.row + 25 + obBBox.y;
+        const obWidth = obBBox.width;
+        const obHeight = obBBox.height;
+        if (otterX < obX + obWidth && otterX + otterWidth > obX && otterY < obY + obHeight && otterY + otterHeight > obY) {
+          lives--;
+          if (lives > 0) {
+            otterRow = 11;
+            otterCol = 7;
+            updateOtterPosition();
+            heartsGroup.removeChild(heartsGroup.lastChild);
+          } else {
+            setGameState('gameOver');
+            return;
+          }
+        }
+      }
+      if (otterRow === 0) {
+        for (let i = 0; i < 5; i++) createParticle(50 * otterCol + 25, 50 * otterRow + 25);
+        setGameState('levelComplete');
+        setTimeout(() => { currentLevel++; startLevel(); }, 2000);
+        return;
+      }
+      requestAnimationFrame(gameLoop);
+    }
+
+    function moveOtter(direction) {
+      if (gameState !== 'playing') return;
+      if (direction === 'up' && otterRow > 0) otterRow--;
+      else if (direction === 'down' && otterRow < 11) otterRow++;
+      else if (direction === 'left' && otterCol > 0) otterCol--;
+      else if (direction === 'right' && otterCol < 15) otterCol++;
+      updateOtterPosition();
+    }
+
+    function updateOtterPosition() {
+      femaleOtter.setAttribute("transform", `translate(${50 * otterCol + 25}, ${50 * otterRow + 25})`);
+    }
+
+    // **Event Listeners**
+    playBtn.addEventListener('click', () => { currentLevel = 0; startLevel(); });
+    restartBtn.addEventListener('click', () => { currentLevel = 0; startLevel(); });
+    restartGameBtn.addEventListener('click', () => { currentLevel = 0; startLevel(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp') moveOtter('up');
+      else if (e.key === 'ArrowDown') moveOtter('down');
+      else if (e.key === 'ArrowLeft') moveOtter('left');
+      else if (e.key === 'ArrowRight') moveOtter('right');
+      e.preventDefault();
+    });
+    upBtn.addEventListener('click', () => moveOtter('up'));
+    leftBtn.addEventListener('click', () => moveOtter('left'));
+    rightBtn.addEventListener('click', () => moveOtter('right'));
+    downBtn.addEventListener('click', () => moveOtter('down'));
+
+    setGameState('start');
+  </script>
+</body>
+</html>
